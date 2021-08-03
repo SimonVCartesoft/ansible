@@ -1,0 +1,36 @@
+---
+- name: "install ELK on localhost"
+  hosts: localhost
+  connection: local
+  become: yes
+  tasks:
+  - name: "Adding ODfE repository"
+    ansible.builtin.command:
+      cmd: curl https://d3g5vo6xdbdb9a.cloudfront.net/yum/opendistroforelasticsearch-artifacts.repo -o /etc/yum.repos.d/opendistroforelasticsearch.repo
+      warn: no
+  - name: "Adding filebeat repository"
+    ansible.builtin.yum_repository:
+      name: elastic_repository
+      description: "Elastic repository for 7.x packages"
+      baseurl: "https://artifacts.elastic.co/packages/7.x/yum"
+      gpgcheck: yes
+      gpgkey: "https://artifacts.elastic.co/GPG-KEY-elasticsearch"
+
+
+
+  - name: "Installation Java 11"
+    ansible.builtin.yum:
+      name: java-11-openjdk-devel
+      state: latest
+  - name: "Installation OpenDistro (elasticsearch)"
+    ansible.builtin.yum:
+      name: opendistroforelasticsearch
+      state: latest
+  - name: "Installation Kibana"
+    ansible.builtin.yum:
+      name: opendistroforelasticsearch-kibana
+      state: latest
+  - name: "Installation Filebeat"
+    ansible.builtin.yum:
+      name: filebeat
+      state: latest
