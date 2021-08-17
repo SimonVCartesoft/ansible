@@ -1,0 +1,38 @@
+---
+- name: "removing ELK"
+  hosts: localhost
+  connection: local
+  become: yes
+  tasks:
+    - name: "uninstall opendistro and co"
+      ansible.builtin.yum:
+        name: '{{ item }}'
+        state: removed
+      loop:
+        - opendistro*
+        - auditbeat*
+        - elasticsearch*
+        - filebeat
+        - metricbeat
+        - wazuh-manager
+
+
+    - name: 'remove old config files'
+      file:
+        path: '{{ item }}'
+        state: absent
+      loop:
+        - /etc/elasticsearch
+        - /etc/kibana
+        - /etc/filebeat
+        - /var/lib/elasticsearch
+        - /usr/share/elasticsearch
+        - /usr/share/kibana
+        - /var/lib/yum/repos/x86_64/7Server/wazuh
+        - /var/lib/yum/repos/x86_64/7Server/Wazuh
+        - /var/cache/yum/x86_64/7Server/Wazuh
+        - /var/cache/yum/x86_64/7Server/wazuh
+        - /var/log/filebeat
+        - /var/log/filebeat/filebeat
+        - /tmp/elasticsearch
+        - /etc/systemd/system/elasticsearch.service.wants

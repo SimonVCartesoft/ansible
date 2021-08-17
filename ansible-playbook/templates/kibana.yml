@@ -1,0 +1,19 @@
+
+server.ssl.enabled: true
+server.ssl.certificate: '/etc/kibana/certs/kibana.pem'
+server.ssl.key: '/etc/kibana/certs/kibana-key.pem'
+server.host: 0.0.0.0
+server.port: 443
+
+elasticsearch.hosts: https://localhost:9200
+elasticsearch.ssl.verificationMode: certificate
+elasticsearch.ssl.certificateAuthorities: ["/etc/kibana/certs/root-ca.pem"]
+elasticsearch.username: kibanaserver
+elasticsearch.password: kibanaserver
+elasticsearch.requestHeadersWhitelist: ["securitytenant","Authorization"]
+
+opendistro_security.multitenancy.enabled: true
+opendistro_security.multitenancy.tenants.preferred: ["Private", "Global"]
+opendistro_security.readonly_mode.roles: ["kibana_read_only"]
+opendistro_security.cookie.secure: false
+

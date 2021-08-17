@@ -1,0 +1,268 @@
+---
+- name: 'Elasticsearch and Kibana installation'
+  hosts: 'localhost'
+  become: yes
+  become_user: 'root'
+
+  pre_tasks:
+    - name: '1/3] [installation of dependencies'
+      yum:
+        name: '{{ item }}'
+        state: latest
+      loop:
+        - libcap
+        - curl
+        - unzip
+        - wget
+
+    - name: '2/3] [import wazuh GPG-KEY'
+      ansible.builtin.rpm_key:
+        state: present
+        key: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+
+    - name: '3/3] [add wazuh repository'
+      yum_repository:
+        gpgcheck: yes
+        gpgkey: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+        enabled: yes
+        name: Wazuh
+        baseurl: https://packages.wazuh.com/4.x/yum/
+        protect: yes
+        description: wazuh repo
+
+
+  tasks:
+    - name: '1/26] [installation of Wazuh and Filebeat'
+      yum:
+        name: '{{ item }}'
+        state: present
+      loop:
+        - wazuh-manager-4.1.5-1
+        - filebeat-7.12.0-1
+
+    - name: '2/26] [restarting of Wazuh and Filebeat'
+      service:
+        name: '{{ item }}'
+        enabled: yes
+        state: restarted
+      loop:
+        - wazuh-manager
+        - filebeat
+
+    - name: '3/26] [backup of different configurations files'
+      copy:
+        src: '{{ item.src }}'
+        dest: '{{ item.dest }}'
+      loop:
+        - { src: '/etc/elasticsearch/elasticsearch.yml', dest: '/etc/elasticsearch/elasticsearch.yml.bkp' }
+        - { src: '/etc/kibana/kibana.yml', dest: '/etc/kibana/kibana.yml.bkp' }
+        - { src: '/etc/filebeat/filebeat.yml', dest: '/etc/filebeat/filebeat.yml.bkp' }
+        - { src: '/usr/share/elasticsearch/plugins/opendistro_security/securityconfig/internal_users.yml', dest: '/usr/share/elasticsearch/plugins/opendistro_security/securityconfig/internal_users.yml.bkp' }
+        - { src: '/usr/share/elasticsearch/plugins/opendistro_security/securityconfig/roles.yml', dest: '/usr/share/elasticsearch/plugins/opendistro_security/securityconfig/roles.yml.bkp' }
+        - { src: '/usr/share/elasticsearch/plugins/opendistro_security/securityconfig/roles_mapping.yml', dest: '/usr/share/elasticsearch/plugins/opendistro_security/securityconfig/roles_mapping.yml.bkp' } 
+
+    - name: '4/26] [add users for wazuh to elasticsearch'
+      blockinfile:
+        path: /usr/share/elasticsearch/plugins/opendistro_security/securityconfig/internal_users.yml
+        marker: ""
+        block: |
+          wazuh:
+            hash: "ChangeMe"
+            reserved: true
+            backend_roles:
+            - "admin"
+            description: "Wazuh admin user"
+
+          wazuh_admin:
+            hash: "ChangeMe"
+            reserved: true
+            hidden: false
+            backend_roles: []
+            attributes: {}
+            opendistro_security_roles: []
+            static: false
+
+          wazuh_user:
+            hash: "ChangeMe"
+            reserved: true
+            hidden: false
+            backend_roles: []
+            attributes: {}
+            opendistro_security_roles: []
+            static: false
+
+    - name: '5/26] [add roles for wazuh to elasticsearch'
+      blockinfile:
+        path: /usr/share/elasticsearch/plugins/opendistro_security/securityconfig/roles.yml
+        marker: ""
+        block: |
+          wazuh_ui_user:
+            reserved: true
+            hidden: false
+            cluster_permissions: []
+            index_permissions:
+            - index_patterns:
+              - "wazuh-*"
+              dls: ""
+              fls: []
+              masked_fields: []
+              allowed_actions:
+              - "read"
+            tenant_permissions: []
+            static: false
+
+          wazuh_ui_admin:
+            reserved: true
+            hidden: false
+            cluster_permissions: []
+            index_permissions:
+            - index_patterns:
+              - "wazuh-*"
+              dls: ""
+              fls: []
+              masked_fields: []
+              allowed_actions:
+              - "read"
+              - "delete"
+              - "manage"
+              - "index"
+            tenant_permissions: []
+            static: false
+
+    - name: '6/26] [add roles mapping for wazuh to elasticsearch'
+      blockinfile:
+        path: /usr/share/elasticsearch/plugins/opendistro_security/securityconfig/roles_mapping.yml
+        marker: ""
+        block: |
+          wazuh_ui_admin:
+            reserved: true
+            hidden: false
+            backend_roles: []
+            hosts: []
+            users:
+            - "wazuh_admin"
+            - "kibanaserver"
+            and_backend_roles: []
+
+          wazuh_ui_user:
+            reserved: true
+            hidden: false
+            backend_roles: []
+            hosts: []
+            users:
+            - "wazuh_user"
+            and_backend_roles:
+
+    - name: '6/26] [add default app for Kibana'
+      lineinfile:
+        path: /etc/kibana/kibana.yml
+        line: 'uiSettings.overrides.defaultRoute: /app/wazuh?security_tenant=global'
+
+    - name: '4/19] [execution of the generation passwords script'
+      script:
+        cmd: scripts/password_generator.sh {{ item }}
+      loop:
+        - wazuh
+        - wazuh_admin
+        - wazuh_user
+
+    - name: '14/19] [deletion of unnecessary files'
+      file:
+        path: '/etc/elasticsearch/{{ item }}'
+        state: absent
+      loop:
+        - kirk.pem
+        - kirk-key.pem
+        - esnode.pem
+        - esnode-key.pem
+        - root-ca.pem
+
+    - name: '15/26] [repace filebeat.yml with the right template'
+      template:
+        src: templates/filebeat.yml
+        dest: /etc/filebeat/filebeat.yml
+
+    - name: '20/26] [add wazuh password in filebeat.yml'
+      script:
+        cmd: scripts/change_wazuh_password.sh
+
+    - name: '15] [create certs folder for Filebeat'
+      file:
+        path: /etc/filebeat/certs
+        state: directory
+
+    - name: '3/26] [copy filebeat certs'
+      copy:
+        src: '{{ item.src }}'
+        dest: '{{ item.dest }}'
+        mode: '0644'
+      loop:
+        - { src: '/etc/elasticsearch/certs/filebeat.pem', dest: '/etc/filebeat/certs/filebeat.pem' }
+        - { src: '/etc/elasticsearch/certs/root-ca.pem', dest: '/etc/filebeat/certs/root-ca.pem' }
+        - { src: '/etc/elasticsearch/certs/filebeat-key.pem', dest: '/etc/filebeat/certs/filebeat-key.pem' }
+
+    - name: '12/26] [change subject for admin in elasticsearch.yml'
+      script:
+        cmd: scripts/change_admin_subject.sh
+
+    - name: '14/26] [load new certificates information to Elasticsearch'
+      command:
+        chdir: /usr/share/elasticsearch/plugins/opendistro_security/tools/
+        cmd: bash securityadmin.sh -cd ../securityconfig/ -nhnv -cacert /etc/elasticsearch/certs/root-ca.pem -cert /etc/elasticsearch/certs/admin.pem -key /etc/elasticsearch/certs/admin-key.pem
+
+    - name: '16/26] [download the alerts template for Elasticsearch'
+      get_url:
+        url: https://raw.githubusercontent.com/wazuh/wazuh/4.1/extensions/elasticsearch/7.x/wazuh-template.json
+        dest: /etc/filebeat/wazuh-template.json
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+
+    - name: '17/26] [download the wazuh module for filebeat'
+      get_url:
+        url: https://packages.wazuh.com/4.x/filebeat/wazuh-filebeat-0.1.tar.gz
+        dest: /etc/filebeat/wazuh-filebeat-0.1.tar.gz
+
+    - name: '18/26] [extract the wazuh module /usr/share/filebeat/module'
+      unarchive:
+        src: /etc/filebeat/wazuh-filebeat-0.1.tar.gz
+        dest: /usr/share/filebeat/module
+
+    - name: '19/26] [restart of Filebeat'
+      service:
+        name: filebeat
+        enabled: yes
+        state: restarted
+
+    - name: '21/26] [create the data folder to install wazuh plugin'
+      file:
+        path: /usr/share/kibana/data
+        state: directory
+        owner: kibana
+        group: kibana
+        mode: '0644'
+
+    - name: '23/26] [set 443 for Kibana'
+      command:
+        cmd: 'setcap "cap_net_bind_service=+ep" /usr/share/kibana/node/bin/node'
+
+    - name: '22/26] [install wazuh plugin on kibana'
+      script:
+        src: scripts/install_plu/gin.sh
+
+    - name: '24/26] [restarting Kibana'
+      service:
+        name: kibana
+        state: restarted
+
+    - name: '25/26] [initialization of the security plugin'
+      command:
+        chdir: /usr/share/elasticsearch/plugins/opendistro_security/tools/
+        cmd: bash securityadmin.sh -cd ../securityconfig/ -icl -nhnv  -cacert /etc/elasticsearch/certs/root-ca.pem -cert /etc/elasticsearch/certs/admin.pem -key /etc/elasticsearch/certs/admin-key.pem
+
+    - name: '26/26] [backup the configurations files'
+      command:
+        chdir: /usr/share/elasticsearch/plugins/opendistro_security/tools/
+        cmd: bash securityadmin.sh -icl -nhnv  -cacert /etc/elasticsearch/certs/root-ca.pem -cert /etc/elasticsearch/certs/admin.pem -key /etc/elasticsearch/certs/admin-key.pem -backup /home/simonv/backup
+        
+

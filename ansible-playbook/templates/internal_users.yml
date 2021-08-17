@@ -1,0 +1,45 @@
+
+_meta:
+  type: "internalusers"
+  config_version: 2
+
+admin:
+  hash: "ChangeMe"
+  reserved: true
+  backend_roles:
+  - "admin"
+  description: "admin"
+
+kibanaserver:
+  hash: "ChangeMe"
+  reserved: true
+  description: "kibanaserver user"
+
+kibanaro:
+  hash: "ChangeMe"
+  reserved: false
+  backend_roles:
+  - "kibanauser"
+  - "readall"
+  description: "kibanaro user"
+
+logstash:
+  hash: "ChangeMe"
+  reserved: false
+  backend_roles:
+  - "logstash"
+  description: "logstash user"
+
+readall:
+  hash: "ChangeMe"
+  reserved: false
+  backend_roles:
+  - "readall"
+  description: "readall user"
+
+snapshotrestore:
+  hash: "ChangeMe"
+  reserved: false
+  backend_roles:
+  - "snapshotrestore"
+  description: "snapshotrestore user"
